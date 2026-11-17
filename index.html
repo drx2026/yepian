@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红树林叶片泌盐机制 · 九年级生物</title>
+
+<style>
+  /* ============================================================
+     全局基础样式
+     ============================================================ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: #dbe5d8;
+    overflow: hidden;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                 "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ============================================================
+     16:9 自适应舞台
+     ============================================================ */
+  .stage {
+    position: relative;
+    width:  min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
+    background: #eef3ea;
+    overflow: hidden;
+    container-type: size;
+  }
+
+  #scene {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    filter: drop-shadow(0 0 0 rgba(0,0,0,0));
+  }
+
+  /* ============================================================
+     右侧步骤文字面板
+     ============================================================ */
+  .caption {
+    position: absolute;
+    right: 5cqw;
+    top: 50%;
+    width: 34cqw;
+    transform: translateY(-50%);
+    display: grid;
+    pointer-events: none;
+  }
+
+  .cap-item {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1.2cqw;
+    padding: 2.4cqw 2.6cqw;
+    border-radius: 1.6cqw;
+    background: rgba(255, 255, 255, 0.66);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 1cqw 3cqw rgba(64, 96, 72, 0.10);
+    opacity: 0;
+  }
+
+  .cap-num {
+    font-size: 1.5cqw;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: #8aa87a;
+  }
+
+  .cap-title {
+    font-size: 3.3cqw;
+    font-weight: 800;
+    line-height: 1.22;
+    color: #2b4630;
+    letter-spacing: 0.01em;
+  }
+
+  .cap-desc {
+    font-size: 1.8cqw;
+    font-weight: 500;
+    line-height: 1.55;
+    color: #60786a;
+  }
+
+  .cap-line {
+    width: 5cqw;
+    height: 0.45cqw;
+    border-radius: 1cqw;
+    background: linear-gradient(90deg, #9ec98c, rgba(158,201,140,0));
+  }
+
+  /* ============================================================
+     悬浮控制按钮
+     —— 固定于舞台右下角，圆角、微阴影、半透明生态绿
+     ============================================================ */
+  .ctrl-btn {
+    position: absolute;
+    bottom: clamp(12px, 2.6cqw, 32px);
+    right: clamp(12px, 2.6cqw, 32px);
+    z-index: 20;
+    min-width: 9em;
+    padding: clamp(8px, 1.05cqw, 16px) clamp(16px, 2cqw, 30px);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 999px;
+    background: rgba(58, 108, 68, 0.82);
+    color: #f3faf0;
+    font-family: inherit;
+    font-size: clamp(12px, 1.55cqw, 20px);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    text-align: center;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 6px 20px rgba(40, 70, 50, 0.25),
+                inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    transition: background 0.3s ease,
+                transform 0.3s ease,
+                box-shadow 0.3s ease;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 悬停：轻微放大 + 变亮 */
+  .ctrl-btn:hover {
+    background: rgba(72, 132, 84, 0.94);
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 10px 26px rgba(40, 70, 50, 0.34),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+
+  /* 按下：回弹 */
+  .ctrl-btn:active {
+    transform: translateY(0) scale(0.98);
+    box-shadow: 0 4px 12px rgba(40, 70, 50, 0.28),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  /* 键盘聚焦：可见外框（无障碍） */
+  .ctrl-btn:focus-visible {
+    outline: 2px solid #b9dfa9;
+    outline-offset: 3px;
+  }
+</style>
+</head>
+
+<body>
+
+<!-- ================================================================
+     16:9 舞台
+     ================================================================ -->
+<div class="stage">
+
+  <!-- ============================================================
+       SVG 场景
+       viewBox 会被 JS 动态改写，从而实现「镜头推拉」效果
+       ============================================================ -->
+  <svg id="scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet">
+
+    <!-- ---------- 背景：超大矩形，避免镜头放大时露边 ---------- -->
+    <rect x="-1200" y="-1200" width="4000" height="3400" fill="#eef3ea"/>
+
+    <!-- 天空柔光 -->
+    <circle cx="360" cy="150" r="320" fill="#ffffff" opacity="0.55"/>
+
+    <!-- ============================================================
+         泥滩（先画，位于水层之下）
+         ============================================================ -->
+    <path d="M-1200,782
+             C-800,770 -400,796 0,784
+             C400,772 800,796 1200,784
+             C1600,772 2000,796 2400,784
+             L2400,2200 L-1200,2200 Z"
+          fill="#c9b99e"/>
+
+    <!-- ============================================================
+         根系
+         ============================================================ -->
+    <g id="roots" fill="none" stroke="#8b7d66" stroke-linecap="round">
+      <path d="M480,558 C430,614 380,684 348,792" stroke-width="20"/>
+      <path d="M480,558 C532,614 582,684 616,792" stroke-width="20"/>
+      <path d="M480,558 C472,646 460,712 452,796" stroke-width="13"/>
+      <path d="M480,558 C428,590 336,614 276,660" stroke-width="12"/>
+      <path d="M480,558 C534,590 626,614 686,660" stroke-width="12"/>
+      <path d="M410,660 C386,700 372,740 366,780" stroke-width="7" opacity="0.85"/>
+      <path d="M556,660 C580,700 594,740 600,780" stroke-width="7" opacity="0.85"/>
+    </g>
+
+    <!-- 呼吸根（白骨壤特征） -->
+    <g id="pneumatophores" fill="none" stroke="#8b7d66"
+       stroke-width="7" stroke-linecap="round">
+      <path d="M352,790 L348,704"/>
+      <path d="M424,796 L422,716"/>
+      <path d="M556,794 L560,710"/>
+      <path d="M636,796 L642,722"/>
+    </g>
+
+    <!-- ============================================================
+         海水层（半透明）
+         ============================================================ -->
+    <g id="waterGroup">
+      <path d="M-1200,552
+               C-1000,536 -800,568 -600,552
+               C-400,536 -200,568 0,552
+               C200,536 400,568 600,552
+               C800,536 1000,568 1200,552
+               C1400,536 1600,568 1800,552
+               C2000,536 2200,568 2400,552
+               L2400,2200 L-1200,2200 Z"
+            fill="#a9d6e5" opacity="0.55"/>
+      <path d="M-1200,552
+               C-1000,536 -800,568 -600,552
+               C-400,536 -200,568 0,552
+               C200,536 400,568 600,552
+               C800,536 1000,568 1200,552
+               C1400,536 1600,568 1800,552
+               C2000,536 2200,568 2400,552"
+            fill="none" stroke="#ffffff" stroke-width="4" opacity="0.65"/>
+    </g>
+
+    <!-- ============================================================
+         植物主体：茎 + 叶
+         ============================================================ -->
+    <g id="plant">
+
+      <!-- 茎：主茎 + 高光 -->
+      <path d="M480,560 C475,492 477,432 480,384"
+            stroke="#7fa872" stroke-width="26" stroke-linecap="round" fill="none"/>
+      <path d="M480,560 C475,492 477,432 480,384"
+            stroke="#a6cc99" stroke-width="8" stroke-linecap="round"
+            fill="none" opacity="0.55"/>
+
+      <!-- 茎内水流虚线 -->
+      <path class="flow-line" d="M474,556 L474,392"
+            stroke="#c9efd6" stroke-width="3" stroke-dasharray="9 16"
+            fill="none" opacity="0.85"/>
+      <path class="flow-line" d="M486,556 L486,392"
+            stroke="#c9efd6" stroke-width="3" stroke-dasharray="9 16"
+            fill="none" opacity="0.85"/>
+
+      <!-- 顶叶 -->
+      <g transform="translate(480,384) rotate(-90)">
+        <path d="M0,0 C45,-58 140,-58 200,0 C140,58 45,58 0,0 Z" fill="#6ea45f"/>
+        <path d="M10,0 L190,0" stroke="#93c283" stroke-width="3"
+              fill="none" opacity="0.75"/>
+      </g>
+
+      <!-- 右上叶（阶段 4、5 的特写目标） -->
+      <g id="targetLeaf" transform="translate(480,400) rotate(-48)">
+        <path d="M0,0 C45,-58 140,-58 200,0 C140,58 45,58 0,0 Z" fill="#72a862"/>
+        <path d="M10,0 L190,0" stroke="#96c586" stroke-width="3"
+              fill="none" opacity="0.75"/>
+        <g id="glandGroup"></g>
+      </g>
+
+      <!-- 左上叶 -->
+      <g transform="translate(480,400) rotate(-132)">
+        <path d="M0,0 C45,-58 140,-58 200,0 C140,58 45,58 0,0 Z" fill="#6ea45f"/>
+        <path d="M10,0 L190,0" stroke="#93c283" stroke-width="3"
+              fill="none" opacity="0.75"/>
+      </g>
+
+      <!-- 右下叶 -->
+      <g transform="translate(480,480) rotate(-18)">
+        <path d="M0,0 C45,-58 140,-58 200,0 C140,58 45,58 0,0 Z" fill="#649b57"/>
+        <path d="M10,0 L190,0" stroke="#8bbb7c" stroke-width="3"
+              fill="none" opacity="0.75"/>
+      </g>
+
+      <!-- 左下叶 -->
+      <g transform="translate(480,480) rotate(-162)">
+        <path d="M0,0 C45,-58 140,-58 200,0 C140,58 45,58 0,0 Z" fill="#649b57"/>
+        <path d="M10,0 L190,0" stroke="#8bbb7c" stroke-width="3"
+              fill="none" opacity="0.75"/>
+      </g>
+
+    </g>
+
+    <!-- ============================================================
+         粒子层
+         ============================================================ -->
+    <g id="particleLayer"></g>
+
+  </svg>
+
+
+  <!-- ============================================================
+       右侧步骤文字
+       ============================================================ -->
+  <div class="caption" id="caption">
+
+    <div class="cap-item">
+      <div class="cap-num">STEP 01 / 05</div>
+      <div class="cap-title">高盐海水进入根部</div>
+      <div class="cap-line"></div>
+      <div class="cap-desc">海水中的盐分随水进入根系</div>
+    </div>
+
+    <div class="cap-item">
+      <div class="cap-num">STEP 02 / 05</div>
+      <div class="cap-title">根部截留<br>拒盐约 80%</div>
+      <div class="cap-line"></div>
+      <div class="cap-desc">拦住八成盐分，挡在根外</div>
+    </div>
+
+    <div class="cap-item">
+      <div class="cap-num">STEP 03 / 05</div>
+      <div class="cap-title">少量盐分随水分运输</div>
+      <div class="cap-line"></div>
+      <div class="cap-desc">只放行两成盐分向上输送</div>
+    </div>
+
+    <div class="cap-item">
+      <div class="cap-num">STEP 04 / 05</div>
+      <div class="cap-title">盐腺主动分泌排盐</div>
+      <div class="cap-line"></div>
+      <div class="cap-desc">盐腺把盐分主动推上叶面</div>
+    </div>
+
+    <div class="cap-item">
+      <div class="cap-num">STEP 05 / 05</div>
+      <div class="cap-title">水分蒸发，叶面结晶</div>
+      <div class="cap-line"></div>
+      <div class="cap-desc">叶面留下白色盐结晶</div>
+    </div>
+
+  </div>
+
+
+  <!-- ============================================================
+       悬浮控制按钮
+       ============================================================ -->
+  <button class="ctrl-btn" id="ctrlBtn" type="button">▶ 播放</button>
+
+</div>
+
+
+<!-- ================================================================
+     GSAP 动画库
+     ================================================================ -->
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+
+<script>
+/* ==================================================================
+   红树林叶片泌盐机制 · 动画主程序
+   ------------------------------------------------------------------
+   结构说明：
+   1. 镜头系统：改写 SVG viewBox 实现平滑推拉（zoom + pan）
+   2. 粒子工厂：makeSalt / makeWater / makeCrystal
+   3. 主时间轴：tl，按 5 个阶段顺序编排
+   4. 控制按钮：播放 / 暂停 / 继续 / 重播
+   ================================================================== */
+
+/* ---------------------------------------------------------------
+   0. 基础引用
+   --------------------------------------------------------------- */
+const NS            = 'http://www.w3.org/2000/svg';
+const sceneEl       = document.getElementById('scene');
+const particleLayer = document.getElementById('particleLayer');
+const glandGroup    = document.getElementById('glandGroup');
+const caps          = Array.from(document.querySelectorAll('.cap-item'));
+const ctrlBtn       = document.getElementById('ctrlBtn');
+
+/* 主题色 */
+const COLOR = {
+  saltCore : '#ffffff',
+  saltHalo : '#fff3a6',
+  water    : '#a6e1f5',
+  crystal  : '#ffffff',
+  shock    : '#a8f0bd'
+};
+
+
+/* ---------------------------------------------------------------
+   1. 镜头系统
+   --------------------------------------------------------------- */
+const view = { cx: 800, cy: 450, zoom: 1 };
+
+function renderView() {
+  const w = 1600 / view.zoom;
+  const h = 900  / view.zoom;
+  sceneEl.setAttribute(
+    'viewBox',
+    `${(view.cx - w / 2).toFixed(2)} ${(view.cy - h / 2).toFixed(2)} ` +
+    `${w.toFixed(2)} ${h.toFixed(2)}`
+  );
+}
+renderView();
+
+
+/* ---------------------------------------------------------------
+   2. 粒子工厂
+   --------------------------------------------------------------- */
+
+function makeSalt(x, y, r = 4) {
+  const g = document.createElementNS(NS, 'g');
+
+  const halo = document.createElementNS(NS, 'circle');
+  halo.setAttribute('r', r * 2.8);
+  halo.setAttribute('fill', COLOR.saltHalo);
+  halo.setAttribute('opacity', '0.28');
+
+  const core = document.createElementNS(NS, 'circle');
+  core.setAttribute('r', r);
+  core.setAttribute('fill', COLOR.saltCore);
+
+  g.appendChild(halo);
+  g.appendChild(core);
+  particleLayer.appendChild(g);
+
+  gsap.set(g, { x, y, scale: 0 });
+  return g;
+}
+
+function makeWater(x, y, r = 3) {
+  const c = document.createElementNS(NS, 'circle');
+  c.setAttribute('r', r);
+  c.setAttribute('fill', COLOR.water);
+  c.setAttribute('opacity', '0.9');
+  particleLayer.appendChild(c);
+  gsap.set(c, { x, y, scale: 0 });
+  return c;
+}
+
+function makeCrystal(x, y, size = 11) {
+  const g = document.createElementNS(NS, 'g');
+
+  const rect = document.createElementNS(NS, 'rect');
+  rect.setAttribute('x', -size / 2);
+  rect.setAttribute('y', -size / 2);
+  rect.setAttribute('width',  size);
+  rect.setAttribute('height', size);
+  rect.setAttribute('rx', 2);
+  rect.setAttribute('fill', COLOR.crystal);
+  rect.setAttribute('stroke', '#dcefff');
+  rect.setAttribute('stroke-width', '1.2');
+
+  g.appendChild(rect);
+  particleLayer.appendChild(g);
+
+  gsap.set(g, { x, y, scale: 0, rotation: 0, opacity: 0 });
+  return g;
+}
+
+function makeShock(x, y) {
+  const c = document.createElementNS(NS, 'circle');
+  c.setAttribute('cx', x);
+  c.setAttribute('cy', y);
+  c.setAttribute('r', 6);
+  c.setAttribute('fill', 'none');
+  c.setAttribute('stroke', COLOR.shock);
+  c.setAttribute('stroke-width', 3);
+  c.setAttribute('opacity', '0');
+  particleLayer.appendChild(c);
+  return c;
+}
+
+
+/* ---------------------------------------------------------------
+   3. 叶片局部坐标 → 世界坐标
+   --------------------------------------------------------------- */
+const LEAF = { x: 480, y: 400, deg: -48 };
+const LEAF_RAD = LEAF.deg * Math.PI / 180;
+const LEAF_COS = Math.cos(LEAF_RAD);
+const LEAF_SIN = Math.sin(LEAF_RAD);
+
+function leafToWorld(lx, ly) {
+  return {
+    x: LEAF.x + lx * LEAF_COS - ly * LEAF_SIN,
+    y: LEAF.y + lx * LEAF_SIN + ly * LEAF_COS
+  };
+}
+
+/* 盐腺在叶片局部坐标系中的位置 */
+const GLAND_LOCAL = [
+  { lx:  35, ly: -25 },
+  { lx:  70, ly: -33 },
+  { lx: 105, ly: -30 },
+  { lx:  50, ly:  27 },
+  { lx:  88, ly:  31 },
+  { lx: 125, ly:  20 }
+];
+
+/* 绘制盐腺（深色小孔 + 亮环） */
+GLAND_LOCAL.forEach(({ lx, ly }) => {
+  const hole = document.createElementNS(NS, 'circle');
+  hole.setAttribute('cx', lx);
+  hole.setAttribute('cy', ly);
+  hole.setAttribute('r', 6);
+  hole.setAttribute('fill', '#2c4f2e');
+  hole.setAttribute('opacity', '0.9');
+
+  const rim = document.createElementNS(NS, 'circle');
+  rim.setAttribute('cx', lx);
+  rim.setAttribute('cy', ly);
+  rim.setAttribute('r', 2.6);
+  rim.setAttribute('fill', '#d5f0c4');
+
+  glandGroup.appendChild(hole);
+  glandGroup.appendChild(rim);
+});
+
+/* 盐腺的世界坐标 */
+const GLANDS = GLAND_LOCAL.map(g => leafToWorld(g.lx, g.ly));
+
+
+/* ---------------------------------------------------------------
+   4. 茎内水流虚线（独立补间，与主时间轴同步启停）
+   --------------------------------------------------------------- */
+const flowTween = gsap.to('.flow-line', {
+  strokeDashoffset: -50,
+  duration: 1.1,
+  ease: 'none',
+  repeat: -1
+});
+flowTween.pause();      /* 初始暂停，等待用户点击播放 */
+
+
+/* ==================================================================
+   5. 主时间轴（初始 paused，由按钮控制）
+   ================================================================== */
+const tl = gsap.timeline({
+  paused: true,
+  onComplete: onTimelineComplete
+});
+
+/* 所有字幕初始隐藏 */
+gsap.set(caps, { opacity: 0, y: 20 });
+
+
+/* ================= 阶段 1 · 全景：高盐海水进入根部 ================= */
+tl.addLabel('stage1', 0);
+
+tl.to(caps[0], { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 0.35);
+
+/* 海水中浮现 28 个盐粒子 */
+const seaSalts = [];
+for (let i = 0; i < 28; i++) {
+  const x = 40 + Math.random() * 1020;
+  const y = 600 + Math.random() * 175;
+  const p = makeSalt(x, y, 3 + Math.random() * 2.2);
+  seaSalts.push(p);
+
+  const t0 = 0.7 + Math.random() * 1.9;
+
+  tl.to(p, { scale: 1, duration: 0.45, ease: 'back.out(2.5)' }, t0);
+  tl.to(p, {
+    x: x + (Math.random() - 0.5) * 70,
+    y: y + (Math.random() - 0.5) * 45,
+    duration: 2.8,
+    ease: 'sine.inOut'
+  }, t0 + 0.4);
+}
+
+/* 几个盐粒子向根部飘去 */
+for (let i = 0; i < 4; i++) {
+  const p = seaSalts[i * 3];
+  tl.to(p, {
+    x: 480 + (Math.random() - 0.5) * 60,
+    y: 600 + Math.random() * 40,
+    scale: 0,
+    duration: 1.4,
+    ease: 'power2.in'
+  }, 3.6 + i * 0.18);
+}
+
+
+/* ============ 阶段 2 · 推近根部：根部截留（拒盐约 80%） ============ */
+tl.addLabel('stage2', 5.2);
+
+/* ★ 镜头推近根部 */
+tl.to(view, {
+  cx: 480, cy: 700, zoom: 2.3,
+  duration: 1.5,
+  ease: 'power2.inOut',
+  onUpdate: renderView
+}, 5.2);
+
+tl.to(seaSalts, { opacity: 0, duration: 0.8 }, 5.2);
+
+tl.to(caps[0], { opacity: 0, y: -20, duration: 0.45, ease: 'power2.in' }, 5.55);
+tl.to(caps[1], { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 6.05);
+
+const BLOCK_TOTAL = 20;
+for (let i = 0; i < BLOCK_TOTAL; i++) {
+
+  const y      = 612 + Math.random() * 132;
+  const startX = 110 + Math.random() * 90;
+  const hitX   = 480 - (y - 556) * 0.62;
+
+  const p  = makeSalt(startX, y, 3.4 + Math.random() * 1.8);
+  const t0 = 6.35 + i * 0.15;
+
+  /* 每 5 个放行 1 个 → 拦截率约 80% */
+  const isBlocked = (i % 5 !== 0);
+
+  tl.to(p, { scale: 1, duration: 0.3, ease: 'back.out(2)' }, t0);
+
+  if (isBlocked) {
+    tl.to(p, { x: hitX, y: y, duration: 0.8, ease: 'power2.in' }, t0 + 0.12);
+
+    const shock = makeShock(hitX, y);
+    tl.fromTo(shock,
+      { opacity: 0.9, scale: 0.6, transformOrigin: '50% 50%' },
+      { opacity: 0, scale: 2.6, duration: 0.55, ease: 'power2.out' },
+      t0 + 0.92
+    );
+
+    tl.to(p, {
+      x: hitX - 140 + Math.random() * 30,
+      y: y - 60 + Math.random() * 30,
+      scale: 0.55,
+      opacity: 0,
+      duration: 0.95,
+      ease: 'power2.out'
+    }, t0 + 0.98);
+
+  } else {
+    tl.to(p, { x: hitX + 34, y: y - 12, duration: 0.8, ease: 'power2.in' }, t0 + 0.12);
+    tl.to(p, {
+      x: 478 + (Math.random() - 0.5) * 18,
+      y: 596,
+      opacity: 0,
+      scale: 0.8,
+      duration: 1.25,
+      ease: 'power1.inOut'
+    }, t0 + 0.95);
+  }
+}
+
+/* 停留后拉回全景 */
+tl.to(view, {
+  cx: 800, cy: 450, zoom: 1,
+  duration: 1.35,
+  ease: 'power2.inOut',
+  onUpdate: renderView
+}, 10.9);
+
+
+/* ============ 阶段 3 · 全景到茎部：少量盐分随水分运输 ============ */
+tl.addLabel('stage3', 12.35);
+
+tl.to(caps[1], { opacity: 0, y: -20, duration: 0.45, ease: 'power2.in' }, 12.15);
+tl.to(caps[2], { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 12.7);
+
+/* ★ 镜头轻推到茎部 */
+tl.to(view, {
+  cx: 490, cy: 480, zoom: 1.85,
+  duration: 1.35,
+  ease: 'power2.inOut',
+  onUpdate: renderView
+}, 12.45);
+
+const climbers = [];
+for (let i = 0; i < 7; i++) {
+  const sx = 470 + Math.random() * 20;
+  const sy = 566 + Math.random() * 18;
+  const p  = makeSalt(sx, sy, 3.4 + Math.random() * 1.4);
+  climbers.push(p);
+
+  const t0 = 13.6 + i * 0.26;
+
+  tl.to(p, { scale: 1, duration: 0.3, ease: 'back.out(2)' }, t0);
+  tl.to(p, { y: 400, duration: 1.7, ease: 'sine.inOut' }, t0 + 0.15);
+  tl.to(p, {
+    x: sx + (Math.random() - 0.5) * 16,
+    duration: 0.85,
+    ease: 'sine.inOut',
+    repeat: 1,
+    yoyo: true
+  }, t0 + 0.2);
+}
+
+
+/* ============ 阶段 4 · 推近叶片：盐腺主动分泌排盐 ============ */
+tl.addLabel('stage4', 17.9);
+
+tl.to(caps[2], { opacity: 0, y: -20, duration: 0.45, ease: 'power2.in' }, 17.7);
+tl.to(caps[3], { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 18.25);
+
+/* ★ 镜头推近目标叶片 */
+tl.to(view, {
+  cx: 552, cy: 328, zoom: 2.9,
+  duration: 1.45,
+  ease: 'power2.inOut',
+  onUpdate: renderView
+}, 17.9);
+
+tl.to(climbers, { opacity: 0, scale: 0, duration: 0.6 }, 18.6);
+
+/* 盐粒子从 6 个盐腺中依次冒出 */
+const leafSalts = [];
+
+GLANDS.forEach((g, gi) => {
+  for (let k = 0; k < 3; k++) {
+
+    const px = g.x + (Math.random() - 0.5) * 8;
+    const py = g.y + (Math.random() - 0.5) * 8;
+    const tx = px + (Math.random() - 0.5) * 48;
+    const ty = py + (Math.random() - 0.5) * 42 - 10;
+
+    const p = makeSalt(px, py, 3 + Math.random() * 1.4);
+    leafSalts.push({ el: p, x: tx, y: ty });
+
+    const t0 = 19.4 + gi * 0.24 + k * 0.13;
+
+    tl.to(p, { scale: 1, duration: 0.3, ease: 'back.out(3)' }, t0);
+    tl.to(p, { x: tx, y: ty, duration: 0.85, ease: 'power2.out' }, t0 + 0.16);
+  }
+});
+
+
+/* ============ 阶段 5 · 叶片特写：水分蒸发，盐分结晶 ============ */
+tl.addLabel('stage5', 24.9);
+
+tl.to(caps[3], { opacity: 0, y: -20, duration: 0.45, ease: 'power2.in' }, 24.7);
+tl.to(caps[4], { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 25.25);
+
+/* ★ 镜头进一步推近（特写） */
+tl.to(view, {
+  cx: 552, cy: 328, zoom: 3.5,
+  duration: 1.3,
+  ease: 'power2.inOut',
+  onUpdate: renderView
+}, 24.9);
+
+/* 5-1 水分子蒸发 */
+for (let i = 0; i < 30; i++) {
+
+  const base = GLANDS[i % GLANDS.length];
+  const px = base.x + (Math.random() - 0.5) * 90;
+  const py = base.y + (Math.random() - 0.5) * 70;
+
+  const w  = makeWater(px, py, 2 + Math.random() * 2);
+  const t0 = 26.1 + Math.random() * 1.9;
+
+  tl.to(w, { scale: 1, duration: 0.28 }, t0);
+
+  tl.to(w, {
+    x: px + (Math.random() - 0.5) * 55,
+    y: py - 110 - Math.random() * 70,
+    opacity: 0,
+    scale: 0.35,
+    duration: 1.7,
+    ease: 'power1.out'
+  }, t0 + 0.18);
+}
+
+/* 5-2 盐分聚集成白色结晶 */
+leafSalts.forEach((s, i) => {
+
+  const t0 = 26.5 + i * 0.055;
+
+  tl.to(s.el, { scale: 0, duration: 0.32, ease: 'power2.in' }, t0);
+
+  const crystal = makeCrystal(s.x, s.y, 9 + Math.random() * 6);
+
+  tl.fromTo(crystal,
+    { scale: 0, rotation: -55, opacity: 0 },
+    {
+      scale: 1,
+      rotation: (Math.random() - 0.5) * 30,
+      opacity: 1,
+      duration: 0.55,
+      ease: 'back.out(2.6)'
+    },
+    t0 + 0.18
+  );
+});
+
+/* 结尾留白（保持画面静止，方便录课出镜） */
+tl.to({}, { duration: 3.0 }, 31.0);
+
+
+/* ==================================================================
+   6. 控制按钮逻辑
+   ------------------------------------------------------------------
+   状态机：
+     idle      — 初始状态，等待首次点击
+     playing   — 正在播放
+     paused    — 暂停中
+     ended     — 播放完毕，可重播
+   ================================================================== */
+let btnState = 'idle';
+
+/* 更新按钮文字 */
+function setBtnLabel(text) {
+  ctrlBtn.textContent = text;
+}
+
+/* 时间轴播放完毕时触发 */
+function onTimelineComplete() {
+  flowTween.pause();              /* 水流虚线也停下 */
+  btnState = 'ended';
+  setBtnLabel('🔄 重新播放');
+}
+
+/* 按钮点击事件 */
+ctrlBtn.addEventListener('click', () => {
+  switch (btnState) {
+
+    /* —— 首次播放 或 从暂停中继续 —— */
+    case 'idle':
+    case 'paused':
+      tl.play();
+      flowTween.play();
+      btnState = 'playing';
+      setBtnLabel('⏸ 暂停');
+      break;
+
+    /* —— 暂停 —— */
+    case 'playing':
+      tl.pause();
+      flowTween.pause();
+      btnState = 'paused';
+      setBtnLabel('▶ 继续播放');
+      break;
+
+    /* —— 播放完毕，重新开始 —— */
+    case 'ended':
+      tl.restart();
+      flowTween.restart();
+      btnState = 'playing';
+      setBtnLabel('⏸ 暂停');
+      break;
+  }
+});
+
+/* 初始按钮文字 */
+setBtnLabel('▶ 播放');
+</script>
+
+</body>
+</html>
